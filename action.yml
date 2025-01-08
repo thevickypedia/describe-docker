@@ -21,7 +21,7 @@ inputs:
     description: Filename to read the full description for the docker image.
     required: true
   summary_limit:
-    description: Summary limit for docker hub overview
+    description: Summary limit for docker hub overview (defaults to 100 for hub.docker.com)
     required: false
     default: "100"
 outputs: { }
@@ -35,14 +35,13 @@ runs:
 
     - name: Validate Inputs
       run: |
-        echo "summary=${{ inputs.summary }}"
-        echo "docker_registry=${{ inputs.docker_registry }}"
-        echo "repository_name=${{ inputs.repository_name }}"
-        echo "description_file=${{ inputs.description_file }}"
-        ls -l
+        if [[ -z "${{ inputs.docker_username }}" ]]; then
+          echo "::error title=MissingInput::Docker hub username is not provided."
+          exit 1
+        fi
 
-        if [[ -z "${{ inputs.summary }}" ]]; then
-          echo "::error title=MissingInput::Summary is not provided."
+        if [[ -z "${{ inputs.docker_password }}" ]]; then
+          echo "::error title=MissingInput::Docker hub password is not provided."
           exit 1
         fi
 
@@ -56,6 +55,10 @@ runs:
           exit 1
         fi
 
+        if [[ -z "${{ inputs.summary }}" ]]; then
+          echo "::warning title=MissingInput::Summary is not provided."
+        fi
+
         if [[ -z "${{ inputs.description_file }}" ]]; then
           echo "::error title=MissingInput::Description file is not provided."
           exit 1
@@ -64,6 +67,12 @@ runs:
         if [[ ! -f "${{ inputs.description_file }}" ]]; then
           echo "::error title=MissingInput::Description file '${{ inputs.description_file }}' does not exist."
           exit 1
+        fi
+
+        if [[ "${{ inputs.repository_name }}" == "${{ inputs.docker_username }}/"* ]]; then
+            echo "REPOSITORY_NAME=${{ inputs.repository_name }}" >> $GITHUB_ENV
+        else
+            echo "REPOSITORY_NAME=${{ inputs.docker_username }}/${{ inputs.repository_name }}"
         fi
       shell: bash
 
@@ -87,30 +96,29 @@ runs:
         fi
       shell: bash
 
-    - name: Get Description
+    - name: Check summary limit
       run: |
-        warn="Description exceeds DockerHub's limit and has been truncated to ${{ inputs.summary_limit }} characters."
-        description="${{ inputs.summary }}"
-        description_length=${#description}
-        if [[ "$description_length" -gt "${{ inputs.summary_limit }}" ]]; then
-          echo "::warning title=Description Too Long::${warn}"
-          shortened_description="${description:0:97}..."
+        warn="Summary exceeds DockerHub's limit and has been truncated to ${{ inputs.summary_limit }} characters."
+        summary="${{ inputs.summary }}"
+        summary_length=${#summary}
+        if [[ "$summary_length" -gt "${{ inputs.summary_limit }}" ]]; then
+          echo "::warning title=Summary Too Long::${warn}"
+          echo "SUMMARY=${summary:0:97}..." >> $GITHUB_ENV
         else
-          shortened_description="$description"
+          echo "SUMMARY=${summary}" >> $GITHUB_ENV
         fi
-        echo "SHORT_DESCRIPTION=${shortened_description}" >> $GITHUB_ENV
       shell: bash
 
     - name: Update description
       run: |
         full_description="$(cat "${{ inputs.description_file }}")"
         payload=$(jq -n \
-          --arg description "${{ env.SHORT_DESCRIPTION }}" \
+          --arg description "${{ env.SUMMARY }}" \
           --arg full_description "$full_description" \
           '{description: $description, full_description: $full_description}')
 
         response=$(curl -s -o /tmp/desc -w "%{http_code}" -X PATCH \
-          "${{ inputs.docker_registry }}/repositories/${{ inputs.repository_name }}/" \
+          "${{ inputs.docker_registry }}/repositories/${{ env.REPOSITORY_NAME }}/" \
           -H "Authorization: Bearer ${{ env.API_TOKEN }}" \
           -H "Content-Type: application/json" \
           -d "$payload")
