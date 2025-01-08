@@ -33,6 +33,40 @@ runs:
       with:
         fetch-depth: 0
 
+    - name: Validate Inputs
+      run: |
+        echo "summary=${{ inputs.summary }}"
+        echo "docker_registry=${{ inputs.docker_registry }}"
+        echo "repository_name=${{ inputs.repository_name }}"
+        echo "description_file=${{ inputs.description_file }}"
+        ls -l
+
+        if [[ -z "${{ inputs.summary }}" ]]; then
+          echo "::error title=MissingInput::Summary is not provided."
+          exit 1
+        fi
+
+        if [[ -z "${{ inputs.docker_registry }}" ]]; then
+          echo "::error title=MissingInput::Docker registry URL is not provided."
+          exit 1
+        fi
+
+        if [[ -z "${{ inputs.repository_name }}" ]]; then
+          echo "::error title=MissingInput::Repository name is not provided."
+          exit 1
+        fi
+
+        if [[ -z "${{ inputs.description_file }}" ]]; then
+          echo "::error title=MissingInput::Description file is not provided."
+          exit 1
+        fi
+
+        if [[ ! -f "${{ inputs.description_file }}" ]]; then
+          echo "::error title=MissingInput::Description file '${{ inputs.description_file }}' does not exist."
+          exit 1
+        fi
+      shell: bash
+
     - name: Fetch API Token
       run: |
         payload=$(jq -n \
