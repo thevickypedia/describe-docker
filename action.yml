@@ -20,6 +20,9 @@ inputs:
   filename:
     description: Filename to read the full description for the docker image.
     required: true
+branding:
+  icon: anchor
+  color: gray-dark
 outputs: { }
 runs:
   using: composite
