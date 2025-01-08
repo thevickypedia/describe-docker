@@ -11,17 +11,14 @@ inputs:
     description: Docker hub registry URL
     required: false
     default: https://hub.docker.com/v2
-  repoistory_name:
+  repository_name:
     description: Name of the docker image repository
     required: true
   summary:
-    description: |
-      Docker repository overview (character limit enforced)
+    description: Docker repository overview (character limit enforced)
     required: true
-  full_description:
-    description: |
-      Full description for the docker image.
-      Input can either be a filename/filepath or the full description itself.
+  description_file:
+    description: Filename to read the full description for the docker image.
     required: true
   summary_limit:
     description: Summary limit for docker hub overview
@@ -72,19 +69,14 @@ runs:
 
     - name: Update description
       run: |
-        full_description="${{ inputs.full_description }}"
-        if [[ ${#full_description} -lt 50 ]]; then
-            if [[ -f "$full_description" ]]; then
-                full_description=$(cat "$full_description")
-            fi
-        fi
+        full_description="$(cat "${{ inputs.description_file }}")"
         payload=$(jq -n \
           --arg description "${{ env.SHORT_DESCRIPTION }}" \
           --arg full_description "$full_description" \
           '{description: $description, full_description: $full_description}')
 
         response=$(curl -s -o /tmp/desc -w "%{http_code}" -X PATCH \
-          "${{ inputs.docker_registry }}/repositories/${{ inputs.repoistory_name }}/" \
+          "${{ inputs.docker_registry }}/repositories/${{ inputs.repository_name }}/" \
           -H "Authorization: Bearer ${{ env.API_TOKEN }}" \
           -H "Content-Type: application/json" \
           -d "$payload")
