@@ -72,7 +72,7 @@ runs:
         if [[ "${{ inputs.repository_name }}" == "${{ inputs.docker_username }}/"* ]]; then
             echo "REPOSITORY_NAME=${{ inputs.repository_name }}" >> $GITHUB_ENV
         else
-            echo "REPOSITORY_NAME=${{ inputs.docker_username }}/${{ inputs.repository_name }}"
+            echo "REPOSITORY_NAME=${{ inputs.docker_username }}/${{ inputs.repository_name }}" >> $GITHUB_ENV
         fi
       shell: bash
 
