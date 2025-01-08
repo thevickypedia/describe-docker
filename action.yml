@@ -1,0 +1,113 @@
+name: describe-docker
+description: GitHub action to update docker description
+inputs:
+  docker_username:
+    description: Docker hub username
+    required: true
+  docker_password:
+    description: Docker hub password
+    required: true
+  docker_registry:
+    description: Docker hub registry URL
+    required: false
+    default: https://hub.docker.com/v2
+  repoistory_name:
+    description: Name of the docker image repository
+    required: true
+  summary:
+    description: |
+      Docker repository overview (character limit enforced)
+    required: true
+  full_description:
+    description: |
+      Full description for the docker image.
+      Input can either be a filename/filepath or the full description itself.
+    required: true
+  summary_limit:
+    description: Summary limit for docker hub overview
+    required: false
+    default: "100"
+outputs: { }
+runs:
+  using: composite
+  steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Fetch API Token
+      run: |
+        payload=$(jq -n \
+          --arg username "${{ inputs.docker_username }}" \
+          --arg password "${{ inputs.docker_password }}" \
+          '{username: $username, password: $password}')
+
+        token=$(curl -s -X POST "${{ inputs.docker_registry }}/users/login/" \
+          -H "Content-Type: application/json" \
+          -d "$payload" | jq -r '.token')
+
+        if [[ -n "${token}" ]]; then
+          echo "::debug title=Token Retriever::Retrieved token successfully"
+          echo "API_TOKEN=${token}" >> $GITHUB_ENV
+        else
+          echo "::error title=Token Retriever::Failed to get auth token"
+          exit 1
+        fi
+      shell: bash
+
+    - name: Get Description
+      run: |
+        warn="Description exceeds DockerHub's limit and has been truncated to ${{ inputs.summary_limit }} characters."
+        description="${{ inputs.summary }}"
+        description_length=${#description}
+        if [[ "$description_length" -gt "${{ inputs.summary_limit }}" ]]; then
+          echo "::warning title=Description Too Long::${warn}"
+          shortened_description="${description:0:97}..."
+        else
+          shortened_description="$description"
+        fi
+        echo "SHORT_DESCRIPTION=${shortened_description}" >> $GITHUB_ENV
+      shell: bash
+
+    - name: Update description
+      run: |
+        full_description="${{ inputs.full_description }}"
+        if [[ ${#full_description} -lt 50 ]]; then
+            if [[ -f "$full_description" ]]; then
+                full_description=$(cat "$full_description")
+            fi
+        fi
+        payload=$(jq -n \
+          --arg description "${{ env.SHORT_DESCRIPTION }}" \
+          --arg full_description "$full_description" \
+          '{description: $description, full_description: $full_description}')
+
+        response=$(curl -s -o /tmp/desc -w "%{http_code}" -X PATCH \
+          "${{ inputs.docker_registry }}/repositories/${{ inputs.repoistory_name }}/" \
+          -H "Authorization: Bearer ${{ env.API_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          -d "$payload")
+
+        status_code="${response: -3}"
+        if [[ "${status_code}" -eq 200 ]]; then
+          echo "::notice title=Updater::Updated description successfully"
+          exit 0
+        elif [[ -f "/tmp/desc" ]]; then
+          echo "::error title=Updater::Failed to update description"
+          response_payload="$(cat /tmp/desc)"
+          reason=$(echo "${response_payload}" | jq '.message')
+          info=$(echo "${response_payload}" | jq '.errinfo')
+          if [[ "$reason" != "null" ]]; then
+            echo "::error title=Updater::[${status_code}]: $reason"
+          else
+            echo "::error title=Updater::[${status_code}]: $(cat /tmp/desc)"
+          fi
+          if [[ "$info" != "null" ]]; then
+            echo "::error title=Updater::${info}"
+          fi
+        else
+          echo "::error title=Updater::Failed to update description - ${status_code}"
+        fi
+        exit 1
+      shell: bash
